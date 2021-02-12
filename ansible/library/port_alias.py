@@ -112,7 +112,7 @@ class SonicPortAliasMap():
             return hwsku_path
         return None
 
-    def get_portmap_from_platform_hwsku(self, platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed):
+    def get_portmap_from_platform_hwsku(self, platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed, admin_status):
         decoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         brkout_pattern = r'(\d{1,3})x(\d{1,3}G)(\[\d{1,3}G\])?(\((\d{1,3})\))?'
         with open(platform_file) as f:
@@ -155,6 +155,7 @@ class SonicPortAliasMap():
                     aliases.append(alias)
                     portmap[intf_name] = alias
                     aliasmap[alias] = intf_name
+                    admin_status[intf_name] = "up"
                     if speed:
                         speed_pat = re.search("^((\d+)G|\d+)$", speed.upper())
                         if speed_pat is None:
@@ -177,13 +178,13 @@ class SonicPortAliasMap():
         portmap = {}
         aliasmap = {}
         portspeed = {}
-
+        admin_status = {}
         # if platform.json and hwsku.json exist, than get portmap from hwsku
         platform_file = self.get_platform_path()
         hwsku_file = self.get_hwsku_path()
         if platform_file and hwsku_file:
-            self.get_portmap_from_platform_hwsku(platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed)
-            return (aliases, portmap, aliasmap, portspeed)
+            self.get_portmap_from_platform_hwsku(platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed, admin_status)
+            return (aliases, portmap, aliasmap, portspeed, admin_status)
 
         # platform.json or hwsku.json does not exist so get portmap from port_config.ini
         filename = self.get_portconfig_path(asic_id)
@@ -226,7 +227,7 @@ class SonicPortAliasMap():
                         if (speed_index != -1) and (len(mapping) > speed_index):
                             portspeed[alias] = mapping[speed_index]
 
-        return (aliases, portmap, aliasmap, portspeed)
+        return (aliases, portmap, aliasmap, portspeed, admin_status)
 
 def main():
     module = AnsibleModule(
@@ -242,6 +243,7 @@ def main():
         portmap = {}
         aliasmap = {}
         portspeed = {}
+        adminstatus = {}
         allmap = SonicPortAliasMap(m_args['hwsku'])
         # When this script is invoked on sonic-mgmt docker, num_asic 
         # parameter is passed.
@@ -257,7 +259,7 @@ def main():
         for asic_id in range(num_asic):
             if num_asic == 1:
                 asic_id = None
-            (aliases_asic, portmap_asic, aliasmap_asic, portspeed_asic) = allmap.get_portmap(asic_id)
+            (aliases_asic, portmap_asic, aliasmap_asic, portspeed_asic, admin_status) = allmap.get_portmap(asic_id)
             if aliases_asic is not None:
                 aliases.extend(aliases_asic)
             if portmap_asic is not None:
@@ -266,10 +268,13 @@ def main():
                 aliasmap.update(aliasmap_asic)
             if portspeed_asic is not None:
                 portspeed.update(portspeed_asic)
+            if adminstatus is not None:
+                adminstatus.update(admin_status)
         module.exit_json(ansible_facts={'port_alias': aliases,
                                         'port_name_map': portmap,
                                         'port_alias_map': aliasmap,
-                                        'port_speed': portspeed})
+                                        'port_speed': portspeed,
+                                        'port_admin_status': adminstatus})
     except (IOError, OSError), e:
         fail_msg = "IO error" + str(e)
         module.fail_json(msg=fail_msg)

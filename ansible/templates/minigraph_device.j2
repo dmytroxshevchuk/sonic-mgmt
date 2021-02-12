@@ -15,6 +15,10 @@
           <MultiPortsInterface>false</MultiPortsInterface>
           <PortName>0</PortName>
           <Priority>0</Priority>
+{% set admin_status_option = port_admin_status | length %}
+{% if admin_status_option != 0 %}
+          <AdminStatus>{{ port_admin_status[port_alias[index]] }}</AdminStatus>
+{% endif %}
 {% set speed_option = port_speed | length %}
 {% if speed_option == 0 %}
           <Speed>{{ iface_speed }}</Speed>
