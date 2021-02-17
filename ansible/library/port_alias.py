@@ -112,7 +112,7 @@ class SonicPortAliasMap():
             return hwsku_path
         return None
 
-    def get_portmap_from_platform_hwsku(self, platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed):
+    def get_portmap_from_platform_hwsku(self, platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed, physical_interfaces=None):
         decoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
         brkout_pattern = r'(\d{1,3})x(\d{1,3}G)(\[\d{1,3}G\])?(\((\d{1,3})\))?'
         with open(platform_file) as f:
@@ -151,6 +151,10 @@ class SonicPortAliasMap():
                 step = int(assigned_lane)//int(num_lane_used)
                 for i in range(0, int(assigned_lane), step):
                     intf_name = "Ethernet" + str(parent_intf_id)
+                    if '\'' + intf_name + '\'' not in physical_interfaces:
+                        parent_intf_id += step
+                        alias_start += step
+                        continue
                     alias = alias_at_lanes.split(",")[alias_start]
                     aliases.append(alias)
                     portmap[intf_name] = alias
@@ -172,17 +176,16 @@ class SonicPortAliasMap():
                 parent_intf_id = 0
                 offset = int(assigned_lane) + int(offset)
 
-    def get_portmap(self, asic_id=None):
+    def get_portmap(self, asic_id=None, physical_interfaces=None):
         aliases = []
         portmap = {}
         aliasmap = {}
         portspeed = {}
-
         # if platform.json and hwsku.json exist, than get portmap from hwsku
         platform_file = self.get_platform_path()
         hwsku_file = self.get_hwsku_path()
         if platform_file and hwsku_file:
-            self.get_portmap_from_platform_hwsku(platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed)
+            self.get_portmap_from_platform_hwsku(platform_file, hwsku_file, aliases, portmap, aliasmap, portspeed, physical_interfaces)
             return (aliases, portmap, aliasmap, portspeed)
 
         # platform.json or hwsku.json does not exist so get portmap from port_config.ini
@@ -232,7 +235,8 @@ def main():
     module = AnsibleModule(
         argument_spec=dict(
             hwsku=dict(required=True, type='str'),
-            num_asic=dict(type='int', required=False)
+            num_asic=dict(type='int', required=False),
+            physical_interfaces=dict(required=False, default=None)
         ),
         supports_check_mode=True
     )
@@ -257,7 +261,7 @@ def main():
         for asic_id in range(num_asic):
             if num_asic == 1:
                 asic_id = None
-            (aliases_asic, portmap_asic, aliasmap_asic, portspeed_asic) = allmap.get_portmap(asic_id)
+            (aliases_asic, portmap_asic, aliasmap_asic, portspeed_asic) = allmap.get_portmap(asic_id, m_args['physical_interfaces'])
             if aliases_asic is not None:
                 aliases.extend(aliases_asic)
             if portmap_asic is not None:

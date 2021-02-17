@@ -5,6 +5,7 @@ import ipaddress
 import csv
 from operator import itemgetter
 from itertools import groupby
+import xml.etree.ElementTree as ET
 import yaml
 import re
 
@@ -67,7 +68,7 @@ class ParseTestbedTopoinfo():
     def __init__(self):
         self.vm_topo_config = {}
 
-    def get_topo_config(self, topo_name):
+    def get_topo_config(self, topo_name, dut):
         CLET_SUFFIX = "-clet"
 
         if 'ptf32' in topo_name:
@@ -78,7 +79,19 @@ class ParseTestbedTopoinfo():
         topo_filename = 'vars/topo_' + topo_name + '.yml'
         vm_topo_config = dict()
         po_map = [None] * 16   # maximum 16 port channel interfaces
+        lab_connection_filename = 'files/lab_connection_graph.xml'
 
+        ### read lab connections
+        tree = ET.parse(lab_connection_filename)
+        root = tree.getroot()
+        dut_ports = []
+        dut_name = re.sub(r'[\'\[\]\']', '', str(dut))
+        for link in root.findall('./PhysicalNetworkGraphDeclaration/DeviceInterfaceLinks/DeviceInterfaceLink'):
+            if link.attrib['StartDevice'] != dut_name:
+                continue
+            target_port = link.attrib['StartPort']
+            dut_ports.append(target_port)
+        vm_topo_config['physical_interfaces'] = dut_ports
         ### read topology definition
         if not os.path.isfile(topo_filename):
             raise Exception("cannot find topology definition file under vars/topo_%s.yml file!" % topo_name)
@@ -194,6 +207,7 @@ def main():
     module = AnsibleModule(
         argument_spec=dict(
             topo=dict(required=True, default=None),
+            dut=dict(required=False, default=None)
         ),
         supports_check_mode=True
     )
@@ -201,7 +215,7 @@ def main():
     topo_name = m_args['topo']
     try:
         topoinfo = ParseTestbedTopoinfo()
-        vm_topo_config = topoinfo.get_topo_config(topo_name)
+        vm_topo_config = topoinfo.get_topo_config(topo_name, m_args['dut'])
         module.exit_json(ansible_facts={'vm_topo_config': vm_topo_config})
     except (IOError, OSError):
         module.fail_json(msg="Can not find topo file for %s" % topo_name)
